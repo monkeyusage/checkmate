@@ -71,8 +71,7 @@ def play(board: chess.Board, side: chess.Color, max_depth: int, depth: int, prev
     assert prev_node.prev_node is None, 'We should be at the start of the filled tree here'
     # if we have equal moves we chose one randomly
     max_value = max([node.value for node in prev_node.next_nodes])
-    breakpoint()
-    print(prev_node.size())
+    print(f"Evaluated {prev_node.size()} nodes, can you remove some? I'm exhausted!")
     return choice([node for node in prev_node.next_nodes if node.value == max_value]).move
 
 
