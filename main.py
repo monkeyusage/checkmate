@@ -35,6 +35,13 @@ class Node:
         func = min if self.turn != side else max
         self.value = func([node.value for node in self.next_nodes])
 
+    def size(self, acc: int = 0) -> int:
+        if not self.next_nodes:
+            return acc
+        for next_node in self.next_nodes:
+            acc += next_node.size(len(next_node.next_nodes))
+        return acc 
+
 
 def play(board: chess.Board, side: chess.Color, max_depth: int, depth: int, prev_node: Node) -> chess.Move:
     """
@@ -63,7 +70,9 @@ def play(board: chess.Board, side: chess.Color, max_depth: int, depth: int, prev
 
     assert prev_node.prev_node is None, 'We should be at the start of the filled tree here'
     # if we have equal moves we chose one randomly
-    max_value = max([node.value for node in prev_node.next_nodes]) 
+    max_value = max([node.value for node in prev_node.next_nodes])
+    breakpoint()
+    print(prev_node.size())
     return choice([node for node in prev_node.next_nodes if node.value == max_value]).move
 
 
