@@ -1,9 +1,15 @@
-from typing import Optional
 from dataclasses import dataclass, field
-from random import choice
+import random
+import time
 import heapq
+import math
+import io
+import sys
+import os
 
 import chess
+import chess.svg
+import pygame
 
 
 def get_board_value(board: chess.Board, side: chess.Color) -> float:
@@ -17,6 +23,7 @@ def get_board_value(board: chess.Board, side: chess.Color) -> float:
         other = sum([piece.piece_type for piece in pieces if piece.color != side])
         out = own / other
     return out if side == board.turn else -out
+
 
 @dataclass(order=True)
 class Node:
@@ -37,7 +44,7 @@ class Node:
         if not self.next_nodes:
             return acc
         for next_node in self.next_nodes.values():
-            acc += next_node.size(len(next_node.next_nodes))
+            acc += next_node.size(len([*next_node.next_nodes.values()]))
         return acc 
 
 
@@ -46,6 +53,7 @@ def play(board: chess.Board, side: chess.Color, max_depth: int, depth: int, prev
     this function recursively fills the move tree
     when going down the leaves back to the root is 'optimizes' the node s values depending on the turn
     """
+    start = time.perf_counter()
     if depth == max_depth:
         return chess.Move.null()
 
@@ -54,10 +62,6 @@ def play(board: chess.Board, side: chess.Color, max_depth: int, depth: int, prev
         board.push(move)
         if (node:= prev_node.next_nodes.get(move)) is None:
             node_value = get_board_value(board, side)
-            if node_value < prev_node.value and board.turn == side:
-                # do not explore nodes that are just bad...
-                board.pop()
-                continue
             node = Node(turn=board.turn, move=move, value=node_value)
             prev_node.add_next(node)
         # otherwise do not recompute
@@ -72,9 +76,10 @@ def play(board: chess.Board, side: chess.Color, max_depth: int, depth: int, prev
         return chess.Move.null()
 
     # if we have equal moves we chose one randomly
+    stop = time.perf_counter()
     max_value = max([node.value for node in prev_node.next_nodes.values()])
-    print(f"Evaluated {prev_node.size()} nodes, can you remove some? I'm exhausted!")
-    return choice([node for node in prev_node.next_nodes.values() if node.value == max_value]).move
+    print(f"Evaluated {prev_node.size()} nodes in {stop-start} seconds")
+    return random.choice([node for node in prev_node.next_nodes.values() if node.value == max_value]).move
 
 
 def get_user_move(board: chess.Board) -> chess.Move:
@@ -90,26 +95,68 @@ def get_user_move(board: chess.Board) -> chess.Move:
             print('Invalid move, enter one of the legal moves')
 
 
+def to_screen(board: chess.Board, size: int) -> pygame.Surface:
+    buffer = io.BytesIO(chess.svg.board(board=board, size=size).encode('utf-8'))
+    with open(f'test.svg', 'wb') as file:
+        file.write(chess.svg.board(board=board, size=size).encode('utf-8'))
+    os.system('open test.svg')
+    return pygame.image.load(buffer)
+
+
+def get_square(xpos: int, ypos: int, size: int) -> chess.Square:
+    letter = 'abcdefgh'[math.ceil((xpos/size) * 8) - 1]
+    number = '12345678'[math.ceil((ypos/size) * 8) - 1]
+    return chess.parse_square(letter + number)
+
+
 def main() -> None:
+    pygame.init()
+    size = 420
+    screen = pygame.display.set_mode((size, size))
+    clock = pygame.time.Clock()
     board = chess.Board()
-    root = Node(board.turn, chess.Move.null(), 0)
+    root = Node(0, board.turn, chess.Move.null())
     while board.outcome() is None:
-        # debug, only use 'AI' for white player
-        if board.turn == chess.BLACK: print(board)
-        move = (
-            play(board, board.turn, 4, 0, root)
-            if board.turn == chess.WHITE
-            else get_user_move(board)
-        )
-        board.push(move)
-        for next_node in root.next_nodes:
-            if next_node.move == move:
-                root = next_node
+        screen_board = to_screen(board, size)
+        screen.blit(screen_board, (0, 0))
+        pygame.display.flip()
+
+        def get_user_move() -> chess.Move:
+            move_from: chess.Square | None = None
+            move = chess.Move.null()
+            while True:
+                pygame.display.flip()
+                events = pygame.event.get(eventtype=pygame.MOUSEBUTTONDOWN)
+                quit_game = pygame.event.get(eventtype=pygame.QUIT)
+                if quit_game:
+                    pygame.quit()
+                    sys.exit()
+                if not events:
+                    clock.tick(60)
+                    continue
+                event, *_ = events
+                xpos, ypos = event.pos
+                if move_from is None:
+                    move_from = get_square(xpos, ypos, size)
+                    continue
+                move_to = get_square(xpos, ypos, size)
+                move = chess.Move(move_from, move_to)
+                if move not in board.legal_moves:
+                    move_from = None
+                    continue
                 break
+            
+            breakpoint()
+            return move
+
+        move = play(board, board.turn, 4, 0, root) if board.turn == chess.WHITE else get_user_move()
+        board.push(move)
+        root = root.next_nodes[move]
 
     outcome = board.outcome()
     assert outcome is not None
     print(f'Outcome of the game is: {outcome.winner if outcome.winner is not None else "no one"}')
+    pygame.quit()
 
 
 if __name__ == '__main__':
