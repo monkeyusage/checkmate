@@ -1,7 +1,2 @@
-cffi==1.15.1
 chess==1.10.0
-greenlet==0.4.13
-hpy==0.0.4.dev179+g9b5d200
 pygame==2.5.2
-pyvips==2.2.1
-readline==6.2.4.1

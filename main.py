@@ -3,12 +3,11 @@ import random
 import time
 import heapq
 import math
-import io
 import sys
-import os
 
 import chess
 import chess.svg
+import cairosvg
 import pygame
 
 
@@ -96,11 +95,12 @@ def get_user_move(board: chess.Board) -> chess.Move:
 
 
 def to_screen(board: chess.Board, size: int) -> pygame.Surface:
-    buffer = io.BytesIO(chess.svg.board(board=board, size=size).encode('utf-8'))
-    with open(f'test.svg', 'wb') as file:
-        file.write(chess.svg.board(board=board, size=size).encode('utf-8'))
-    os.system('open test.svg')
-    return pygame.image.load(buffer)
+    buffer = chess.svg.board(board=board, size=size).encode('utf-8')
+    png_buffer = cairosvg.svg2png(bytestring=buffer, output_height=size, output_width=size)
+    with open('test.png', 'wb') as file:
+        file.write(png_buffer)
+    breakpoint()
+    return pygame.image.frombuffer(buffer, size=(size, size), 'RGBX')
 
 
 def get_square(xpos: int, ypos: int, size: int) -> chess.Square:
@@ -149,7 +149,7 @@ def main() -> None:
             breakpoint()
             return move
 
-        move = play(board, board.turn, 4, 0, root) if board.turn == chess.WHITE else get_user_move()
+        move = play(board, board.turn, 2, 0, root) if board.turn == chess.WHITE else get_user_move()
         board.push(move)
         root = root.next_nodes[move]
 
