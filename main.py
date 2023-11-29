@@ -9,7 +9,9 @@ import chess
 def get_board_value(board: chess.Board, side: chess.Color) -> float:
     pieces = board.piece_map().values()
     if board.is_checkmate():
-        out = 1000
+        out = 3 
+    elif board.is_check():
+        out = 2
     else:
         own = sum([piece.piece_type for piece in pieces if piece.color == side])
         other = sum([piece.piece_type for piece in pieces if piece.color != side])
@@ -21,7 +23,12 @@ class Node:
     value: float
     turn: chess.Color = field(compare=False)
     move: chess.Move = field(compare=False)
-    next_nodes: list['Node'] = field(default_factory=list, compare=False)
+    next_nodes: dict[chess.Move, 'Node'] = field(default_factory=dict, compare=False)
+    queue: list['Node'] = field(default_factory=list, compare=False)
+
+    def add_next(self, node: 'Node') -> None:
+        self.next_nodes[node.move] = node
+        heapq.heappush(self.queue, node)
 
     def __repr__(self) -> str:
         return f'Node(move:{self.move}, turn:{self.turn}, value:{self.value})'
@@ -29,7 +36,7 @@ class Node:
     def size(self, acc: int = 0) -> int:
         if not self.next_nodes:
             return acc
-        for next_node in self.next_nodes:
+        for next_node in self.next_nodes.values():
             acc += next_node.size(len(next_node.next_nodes))
         return acc 
 
@@ -43,28 +50,31 @@ def play(board: chess.Board, side: chess.Color, max_depth: int, depth: int, prev
         return chess.Move.null()
 
     for move in board.legal_moves:
+        # if move has not yet been evaluated add it to the tree
         board.push(move)
-        node_value = get_board_value(board, side)
-        if node_value < prev_node.value and board.turn == side:
-            # do not explore nodes that are just bad...
-            board.pop()
-            continue
-        node = Node(turn=board.turn, move=move, value=node_value)
-        heapq.heappush(prev_node.next_nodes, node)
+        if (node:= prev_node.next_nodes.get(move)) is None:
+            node_value = get_board_value(board, side)
+            if node_value < prev_node.value and board.turn == side:
+                # do not explore nodes that are just bad...
+                board.pop()
+                continue
+            node = Node(turn=board.turn, move=move, value=node_value)
+            prev_node.add_next(node)
+        # otherwise do not recompute
         play(board, side, max_depth, depth+1, prev_node=node)
         board.pop()
 
     if depth != 0:
         # since we went through all next moves we can now optimize the node
         if prev_node.next_nodes:
-            (best_node, *_) = heapq.nlargest(1, prev_node.next_nodes)
+            (best_node, *_) = heapq.nlargest(1, prev_node.queue)
             prev_node.value = best_node.value
         return chess.Move.null()
 
     # if we have equal moves we chose one randomly
-    max_value = max([node.value for node in prev_node.next_nodes])
+    max_value = max([node.value for node in prev_node.next_nodes.values()])
     print(f"Evaluated {prev_node.size()} nodes, can you remove some? I'm exhausted!")
-    return choice([node for node in prev_node.next_nodes if node.value == max_value]).move
+    return choice([node for node in prev_node.next_nodes.values() if node.value == max_value]).move
 
 
 def get_user_move(board: chess.Board) -> chess.Move:
