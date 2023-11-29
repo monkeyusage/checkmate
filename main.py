@@ -1,39 +1,30 @@
 from typing import Optional
 from dataclasses import dataclass, field
 from random import choice
+import heapq
 
 import chess
 
 
 def get_board_value(board: chess.Board, side: chess.Color) -> float:
     pieces = board.piece_map().values()
-    if board.is_checkmate() and board.turn != side:
-        return 1000
-    elif board.is_checkmate() and board.turn == side:
-        return 0
-    own = sum([piece.piece_type for piece in pieces if piece.color == side])
-    other = sum([piece.piece_type for piece in pieces if piece.color != side])
-    return own / other
+    if board.is_checkmate():
+        out = 1000
+    else:
+        own = sum([piece.piece_type for piece in pieces if piece.color == side])
+        other = sum([piece.piece_type for piece in pieces if piece.color != side])
+        out = own / other
+    return out if side == board.turn else -out
 
-@dataclass
+@dataclass(order=True)
 class Node:
-    turn: chess.Color
-    move: chess.Move
     value: float
-    prev_node: Optional['Node']
-    next_nodes: list['Node'] = field(default_factory=list)
+    turn: chess.Color = field(compare=False)
+    move: chess.Move = field(compare=False)
+    next_nodes: list['Node'] = field(default_factory=list, compare=False)
 
     def __repr__(self) -> str:
-        prev_move = None if self.prev_node is None else self.prev_node.move
-        return f'Node(move:{self.move}, turn:{self.turn}, value:{self.value}, prev_move:{prev_move})'
-
-    def optimize(self, side: chess.Color) -> None:
-        # optimizing a node consists in getting the max potential value if its our turn
-        # other pick the best move of the opponent thus the minimum value
-        if not self.next_nodes:
-            return
-        func = min if self.turn != side else max
-        self.value = func([node.value for node in self.next_nodes])
+        return f'Node(move:{self.move}, turn:{self.turn}, value:{self.value})'
 
     def size(self, acc: int = 0) -> int:
         if not self.next_nodes:
@@ -58,17 +49,18 @@ def play(board: chess.Board, side: chess.Color, max_depth: int, depth: int, prev
             # do not explore nodes that are just bad...
             board.pop()
             continue
-        node = Node(turn=board.turn, move=move, value=node_value, prev_node=prev_node)
-        prev_node.next_nodes.append(node)
+        node = Node(turn=board.turn, move=move, value=node_value)
+        heapq.heappush(prev_node.next_nodes, node)
         play(board, side, max_depth, depth+1, prev_node=node)
         board.pop()
 
     if depth != 0:
         # since we went through all next moves we can now optimize the node
-        prev_node.optimize(side)
+        if prev_node.next_nodes:
+            (best_node, *_) = heapq.nlargest(1, prev_node.next_nodes)
+            prev_node.value = best_node.value
         return chess.Move.null()
 
-    assert prev_node.prev_node is None, 'We should be at the start of the filled tree here'
     # if we have equal moves we chose one randomly
     max_value = max([node.value for node in prev_node.next_nodes])
     print(f"Evaluated {prev_node.size()} nodes, can you remove some? I'm exhausted!")
@@ -90,16 +82,21 @@ def get_user_move(board: chess.Board) -> chess.Move:
 
 def main() -> None:
     board = chess.Board()
+    root = Node(board.turn, chess.Move.null(), 0)
     while board.outcome() is None:
         # debug, only use 'AI' for white player
         if board.turn == chess.BLACK: print(board)
-        root = Node(board.turn, chess.Move.null(), 1, None)
         move = (
             play(board, board.turn, 4, 0, root)
             if board.turn == chess.WHITE
             else get_user_move(board)
         )
         board.push(move)
+        for next_node in root.next_nodes:
+            if next_node.move == move:
+                root = next_node
+                break
+
     outcome = board.outcome()
     assert outcome is not None
     print(f'Outcome of the game is: {outcome.winner if outcome.winner is not None else "no one"}')
