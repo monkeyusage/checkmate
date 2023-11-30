@@ -4,6 +4,7 @@ import time
 import heapq
 import math
 import sys
+import io
 
 import chess
 import chess.svg
@@ -96,11 +97,8 @@ def get_user_move(board: chess.Board) -> chess.Move:
 
 def to_screen(board: chess.Board, size: int) -> pygame.Surface:
     buffer = chess.svg.board(board=board, size=size).encode('utf-8')
-    png_buffer = cairosvg.svg2png(bytestring=buffer, output_height=size, output_width=size)
-    with open('test.png', 'wb') as file:
-        file.write(png_buffer)
-    breakpoint()
-    return pygame.image.frombuffer(buffer, size=(size, size), 'RGBX')
+    png_buffer: bytes = cairosvg.svg2png(bytestring=buffer, output_height=size, output_width=size)  # type: ignore
+    return pygame.image.load(io.BytesIO(png_buffer))
 
 
 def get_square(xpos: int, ypos: int, size: int) -> chess.Square:
