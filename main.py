@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import Optional
 import random
 import time
 import heapq
@@ -82,8 +83,12 @@ def play(board: chess.Board, side: chess.Color, max_depth: int, depth: int, prev
     return random.choice([node for node in prev_node.next_nodes.values() if node.value == max_value]).move
 
 
-def to_screen(board: chess.Board, size: int) -> pygame.Surface:
-    buffer = chess.svg.board(board=board, orientation=board.turn, size=size).encode('utf-8')
+def to_screen(board: chess.Board, size: int, square: Optional[chess.Square] = None) -> pygame.Surface:
+    fillings = {}
+    if square is not None and board.piece_at(square) is not None:
+        destinations = [move.to_square for move in board.legal_moves if move.from_square == square]
+        fillings = {destination: 'red' for destination in destinations}
+    buffer = chess.svg.board(board=board, orientation=board.turn, size=size, fill=fillings).encode('utf-8')
     png_buffer: bytes = cairosvg.svg2png(bytestring=buffer, output_height=size, output_width=size)  # type: ignore
     return pygame.image.load(io.BytesIO(png_buffer))
 
@@ -94,6 +99,33 @@ def get_square(xpos: int, ypos: int, size: int, turn: chess.Color) -> chess.Squa
     letter = letters[math.ceil((xpos/size) * 8) - 1]
     number = '12345678'[math.ceil((ypos/size) * 8) - 1]
     return chess.parse_square(letter + number)
+
+
+def get_user_move(board: chess.Board, clock: pygame.time.Clock, screen_size: int, screen: pygame.Surface) -> chess.Move:
+    move_from: chess.Square | None = None
+    while True:
+        screen_board = to_screen(board, screen_size, move_from)
+        screen.blit(screen_board, (0, 0))
+        pygame.display.flip()
+        events = pygame.event.get(eventtype=pygame.MOUSEBUTTONDOWN)
+        quit_game = pygame.event.get(eventtype=pygame.QUIT)
+        if quit_game:
+            pygame.quit()
+            sys.exit()
+        if not events:
+            clock.tick(60)
+            continue
+        event, *_ = events
+        xpos, ypos = event.pos
+        if move_from is None:
+            move_from = get_square(xpos, ypos, screen_size, board.turn)
+            continue
+        move_to = get_square(xpos, ypos, screen_size, board.turn)
+        move = chess.Move(move_from, move_to)
+        if move not in board.legal_moves:
+            move_from = None
+            continue
+        return move
 
 
 def main() -> None:
@@ -107,35 +139,7 @@ def main() -> None:
         screen_board = to_screen(board, size)
         screen.blit(screen_board, (0, 0))
         pygame.display.flip()
-
-        def get_user_move() -> chess.Move:
-            move_from: chess.Square | None = None
-            move = chess.Move.null()
-            while True:
-                pygame.display.flip()
-                events = pygame.event.get(eventtype=pygame.MOUSEBUTTONDOWN)
-                quit_game = pygame.event.get(eventtype=pygame.QUIT)
-                if quit_game:
-                    pygame.quit()
-                    sys.exit()
-                if not events:
-                    clock.tick(60)
-                    continue
-                event, *_ = events
-                xpos, ypos = event.pos
-                if move_from is None:
-                    move_from = get_square(xpos, ypos, size, board.turn)
-                    continue
-                move_to = get_square(xpos, ypos, size, board.turn)
-                move = chess.Move(move_from, move_to)
-                if move not in board.legal_moves:
-                    move_from = None
-                    continue
-                print(f'Played {move}')
-                break
-            return move
-
-        move = play(board, board.turn, 2, 0, root) if board.turn == chess.WHITE else get_user_move()
+        move = play(board, board.turn, 4, 0, root) if board.turn == chess.WHITE else get_user_move(board, clock, size, screen)
         board.push(move)
         root = root.next_nodes[move]
 
