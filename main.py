@@ -82,27 +82,16 @@ def play(board: chess.Board, side: chess.Color, max_depth: int, depth: int, prev
     return random.choice([node for node in prev_node.next_nodes.values() if node.value == max_value]).move
 
 
-def get_user_move(board: chess.Board) -> chess.Move:
-    while True:
-        move_str = input('> ')
-        if move_str == 'quit': exit()
-        try:
-            move = chess.Move.from_uci(move_str)
-            if move not in board.legal_moves:
-                raise chess.InvalidMoveError()
-            return move
-        except chess.InvalidMoveError:
-            print('Invalid move, enter one of the legal moves')
-
-
 def to_screen(board: chess.Board, size: int) -> pygame.Surface:
-    buffer = chess.svg.board(board=board, size=size).encode('utf-8')
+    buffer = chess.svg.board(board=board, orientation=board.turn, size=size).encode('utf-8')
     png_buffer: bytes = cairosvg.svg2png(bytestring=buffer, output_height=size, output_width=size)  # type: ignore
     return pygame.image.load(io.BytesIO(png_buffer))
 
 
-def get_square(xpos: int, ypos: int, size: int) -> chess.Square:
-    letter = 'abcdefgh'[math.ceil((xpos/size) * 8) - 1]
+def get_square(xpos: int, ypos: int, size: int, turn: chess.Color) -> chess.Square:
+    letters = 'abcdefgh'
+    letters = letters if turn == chess.WHITE else letters[::-1]
+    letter = letters[math.ceil((xpos/size) * 8) - 1]
     number = '12345678'[math.ceil((ypos/size) * 8) - 1]
     return chess.parse_square(letter + number)
 
@@ -135,16 +124,15 @@ def main() -> None:
                 event, *_ = events
                 xpos, ypos = event.pos
                 if move_from is None:
-                    move_from = get_square(xpos, ypos, size)
+                    move_from = get_square(xpos, ypos, size, board.turn)
                     continue
-                move_to = get_square(xpos, ypos, size)
+                move_to = get_square(xpos, ypos, size, board.turn)
                 move = chess.Move(move_from, move_to)
                 if move not in board.legal_moves:
                     move_from = None
                     continue
+                print(f'Played {move}')
                 break
-            
-            breakpoint()
             return move
 
         move = play(board, board.turn, 2, 0, root) if board.turn == chess.WHITE else get_user_move()
