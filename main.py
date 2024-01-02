@@ -6,11 +6,34 @@ import heapq
 import math
 import sys
 import io
-
 import chess
 import chess.svg
 import cairosvg
 import pygame
+from numpy.typing import NDArray
+from checkmate import play as rust_play
+
+
+@dataclass
+class Bot:
+    id: int
+    generation: int
+    fitness: float
+    brain: NDArray
+
+
+PROMOTION_SQUARES = [*range(8), *range(64-8, 64)]
+
+
+def maybe_promote(board: chess.Board, move: chess.Move) -> chess.Move:
+    # auto promote to queen
+    if (
+        (piece := board.piece_at(move.from_square)) is not None
+        and piece.piece_type == chess.PAWN
+        and (move.to_square in PROMOTION_SQUARES)
+    ):
+        move.promotion = chess.QUEEN
+    return move
 
 
 def get_board_value(board: chess.Board, side: chess.Color) -> float:
@@ -46,25 +69,41 @@ class Node:
             return acc
         for next_node in self.next_nodes.values():
             acc += next_node.size(len([*next_node.next_nodes.values()]))
-        return acc 
+        return acc
 
 
-def play(board: chess.Board, side: chess.Color, max_depth: int, depth: int, prev_node: Node) -> chess.Move:
+def play(
+        board: chess.Board,
+        side: chess.Color,
+        max_depth: int,
+        depth: int,
+        prev_node: Node
+) -> chess.Move:
     """
     this function recursively fills the move tree
-    when going down the leaves back to the root is 'optimizes' the node s values depending on the turn
+    when going down the leaves back to the root is 'optimizes'
+    the node s values depending on the turn
     """
     start = time.perf_counter()
     if depth == max_depth:
         return chess.Move.null()
 
     for move in board.legal_moves:
-        # if move has not yet been evaluated add it to the tree
+        move = maybe_promote(board, move)
+        # go further down the tree if
+        # current_node value > prev_node value or
+        # current node does not exist, create it and compute its value
+        node = prev_node.next_nodes.get(move)
+        if node is not None and node.value < prev_node.value:
+            # the node exists and is useless
+            continue
         board.push(move)
-        if (node:= prev_node.next_nodes.get(move)) is None:
+        # move has not yet been evaluated add it to the tree
+        if node is None:
             node_value = get_board_value(board, side)
             node = Node(turn=board.turn, move=move, value=node_value)
             prev_node.add_next(node)
+
         # otherwise do not recompute
         play(board, side, max_depth, depth+1, prev_node=node)
         board.pop()
@@ -80,16 +119,30 @@ def play(board: chess.Board, side: chess.Color, max_depth: int, depth: int, prev
     stop = time.perf_counter()
     max_value = max([node.value for node in prev_node.next_nodes.values()])
     print(f"Evaluated {prev_node.size()} nodes in {stop-start} seconds")
-    return random.choice([node for node in prev_node.next_nodes.values() if node.value == max_value]).move
+    return random.choice(
+        [
+            node
+            for node in prev_node.next_nodes.values()
+            if node.value == max_value
+        ]
+    ).move
 
 
-def to_screen(board: chess.Board, size: int, square: Optional[chess.Square] = None) -> pygame.Surface:
+def to_screen(
+    board: chess.Board,
+    size: int,
+    square: Optional[chess.Square] = None
+) -> pygame.Surface:
     fillings = {}
     if square is not None and board.piece_at(square) is not None:
         destinations = [move.to_square for move in board.legal_moves if move.from_square == square]
         fillings = {destination: 'red' for destination in destinations}
     buffer = chess.svg.board(board=board, orientation=board.turn, size=size, fill=fillings).encode('utf-8')
-    png_buffer: bytes = cairosvg.svg2png(bytestring=buffer, output_height=size, output_width=size)  # type: ignore
+    png_buffer: bytes = cairosvg.svg2png(
+        bytestring=buffer,
+        output_height=size,
+        output_width=size
+    )  # type: ignore
     return pygame.image.load(io.BytesIO(png_buffer))
 
 
@@ -125,6 +178,7 @@ def get_user_move(board: chess.Board, clock: pygame.time.Clock, screen_size: int
         if move not in board.legal_moves:
             move_from = None
             continue
+        move = maybe_promote(board, move)
         return move
 
 
@@ -139,13 +193,21 @@ def main() -> None:
         screen_board = to_screen(board, size)
         screen.blit(screen_board, (0, 0))
         pygame.display.flip()
-        move = play(board, board.turn, 4, 0, root) if board.turn == chess.WHITE else get_user_move(board, clock, size, screen)
+        start = time.perf_counter()
+        move = (
+            play(board, board.turn, 4, 0, root)
+            if board.turn == chess.WHITE
+            else get_user_move(board, clock, size, screen)
+        )
+        stop = time.perf_counter()
+        print(f"Played {move} in {stop-start} seconds")
         board.push(move)
         root = root.next_nodes[move]
 
     outcome = board.outcome()
     assert outcome is not None
-    print(f'Outcome of the game is: {outcome.winner if outcome.winner is not None else "no one"}')
+    winner = outcome.winner if outcome.winner is not None else "no one"
+    print(f'Outcome of the game is: {winner}')
     pygame.quit()
 
 
