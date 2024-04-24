@@ -12,10 +12,10 @@ end
 Bot() = Bot(
   Flux.Chain(
     Flux.Conv((8, 8), 12 => 100, Flux.relu, bias=false, pad=Flux.SamePad()),
-    Flux.Conv((8, 8), 100 => 1000, Flux.relu, bias=false, pad=Flux.SamePad()),
-    Flux.Conv((8, 8), 1000 => 1000, Flux.relu, bias=false, pad=Flux.SamePad()),
+    Flux.Conv((8, 8), 100 => 100, Flux.relu, bias=false, pad=Flux.SamePad()),
+    Flux.Conv((8, 8), 100 => 100, Flux.relu, bias=false, pad=Flux.SamePad()),
     Flux.flatten,
-    Flux.Dense(64000 => 64*63*4, Flux.relu),
+    Flux.Dense(6400 => 64*63*4, Flux.relu),
     # output represents all possible moves in chess board for both white and black)
     Flux.Dense(64*63*4 => 64*63*2, Flux.sigmoid),
   ), 0
@@ -39,14 +39,13 @@ function pick_move(bot::Bot, board::Chess.Board)::Chess.Move
   predictions = bot.neuralnet(to_array(board))
   moves = sortperm(vec(predictions))
   max_index = length(moves)
-  move_index = 0
+  move_index = 1 
   selected_move = Chess.Move(moves[move_index])
   while !(selected_move in Chess.moves(board))
     move_index += 1
     selected_move = Chess.Move(moves[move_index])
     @assert move_index < max_index
   end
-  print("Max searched moves $(move_index)")
   selected_move
 end
 
@@ -56,21 +55,17 @@ function play!(whites::Bot, blacks::Bot)::Nothing
     board = game.node.board
     move = Chess.sidetomove(board) == Chess.WHITE ? pick_move(whites, board) : pick_move(blacks, board)
     Chess.domove!(game, move)
-    print(board)
-    break
   end
-  if Chess.isstalemate(board)
-    return nothing
-  end
-  if Chess.ischeckmate(board)
+  if Chess.ischeckmate(game.node.board)
     winner = Chess.sidetomove(board) == Chess.WHITE ? blacks : whites
     winner.wins += 1
   end
+  print(game.node.board)
 end
 
 
 function test()
   bot = Bot()
   board = Chess.@startboard
-  play!(bot, bot)
+  @time play!(bot, bot)
 end
